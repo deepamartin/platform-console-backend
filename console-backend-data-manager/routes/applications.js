@@ -25,7 +25,7 @@
 * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 *-------------------------------------------------------------------------------*/
 
-module.exports = function(express, logger, cors, corsOptions, config, Q, HTTP){
+module.exports = function(express, logger, cors, corsOptions, config, Q, HTTP) {
 
   var router = express.Router();
 
@@ -50,6 +50,23 @@ module.exports = function(express, logger, cors, corsOptions, config, Q, HTTP){
     var deferred = Q.defer();
     var url = config.deployment_manager.host + config.deployment_manager.API.applications + "/" + id + "/status";
     logger.debug("get application status:", url);
+    HTTP.request({ url: url }).then(function successCallback(res) {
+      return res.body.read().then(function(bodyStream) {
+        var body = bodyStream.toString('UTF-8');
+        return deferred.resolve(body);
+      });
+    }, function errorCallback(error) {
+      logger.error("get application details error response", error);
+      deferred.reject('error ' + error);
+    });
+
+    return deferred.promise;
+  }
+
+  function getApplicationSummary(id) {
+    var deferred = Q.defer();
+    var url = config.deployment_manager.host + config.deployment_manager.API.applications + "/" + id + "/summary";
+    logger.debug("get application summary:", url);
     HTTP.request({ url: url }).then(function successCallback(res) {
       return res.body.read().then(function(bodyStream) {
         var body = bodyStream.toString('UTF-8');
@@ -153,6 +170,22 @@ module.exports = function(express, logger, cors, corsOptions, config, Q, HTTP){
     });
   });
 
+  /* GET Application summary by id. */
+  router.get('/:id/summary', cors(corsOptions), function(req, res) {
+    var id = req.params.id;
+    var promise = Q.all([getApplicationSummary(id)]);
+    promise.then(function(results) {
+      var details = {};
+      try {
+        details = JSON.parse(results[0]);
+      } catch (e) {
+        logger.error("invalid results", results[0]);
+      }
+
+      res.json(details);
+    });
+  });
+
   /* Start or Stop an application by id */
   router.post('/:id/:action', cors(corsOptions), function(req, res) {
     var applicationId = req.params.id;
@@ -179,7 +212,7 @@ module.exports = function(express, logger, cors, corsOptions, config, Q, HTTP){
              logger.error(request.method, request.url, "error: ", error.status);
              statusRet = error.status;
            })
-           .then(function(data) { res.status(statusRet).send(data); }, function(data) { res.sendStatus(500);} );
+           .then(function(data) { res.status(statusRet).send(data); }, function() { res.sendStatus(500);});
     }
   });
 
@@ -213,7 +246,7 @@ module.exports = function(express, logger, cors, corsOptions, config, Q, HTTP){
              logger.error(request.method, request.url, "error: ", error.status);
              statusRet = error.status;
            })
-           .then(function(data) { res.status(statusRet).send(data); }, function(data) { res.sendStatus(500);} );
+           .then(function(data) { res.status(statusRet).send(data); }, function() { res.sendStatus(500);});
     }
   });
 
@@ -254,9 +287,10 @@ module.exports = function(express, logger, cors, corsOptions, config, Q, HTTP){
              logger.error(request.method, request.url, "error: ", error.status);
              statusRet = error.status;
            })
-           .then(function(data) { res.status(statusRet).send(data); }, function(data) { res.sendStatus(500);} );
+           .then(function(data) { res.status(statusRet).send(data); }, function() { res.sendStatus(500);});
     }
   });
 
   return router;
 };
+
